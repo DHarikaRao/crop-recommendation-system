@@ -1,0 +1,5 @@
+line-length = 120
+
+[lint]
+# Real errors only: syntax errors, undefined names, unused imports/variables.
+select = ["E9", "F"]

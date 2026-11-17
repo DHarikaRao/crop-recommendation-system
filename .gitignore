@@ -1,0 +1,10 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.DS_Store
+# The dataset is not redistributed; download it yourself (see README).
+data/*
+!data/.gitkeep

@@ -1,0 +1,84 @@
+<section class="panel result-card" id="result-panel" aria-labelledby="result-title">
+  <div class="result-head">
+    <svg class="donut" viewBox="0 0 120 120" role="img" aria-label="Confidence {{ result.top.percent }} percent">
+      <circle class="donut-bg" cx="60" cy="60" r="50" pathLength="100"/>
+      <circle class="donut-fg level-{{ result.level|lower }}" cx="60" cy="60" r="50" pathLength="100"
+              stroke-dasharray="100 100" stroke-dashoffset="{{ result.donut_offset }}" transform="rotate(-90 60 60)"/>
+      <text x="60" y="64" class="donut-num" text-anchor="middle">{{ result.top.percent }}%</text>
+    </svg>
+    <div>
+      <p class="eyebrow">Recommended crop</p>
+      <h2 id="result-title"><span aria-hidden="true">{{ result.top.icon }}</span> {{ result.top.name }}</h2>
+      <p class="badge level-{{ result.level|lower }}">{{ result.level }} confidence</p>
+    </div>
+  </div>
+
+  {% for warning in result.warnings %}
+  <div class="alert alert-warn" role="status">{{ warning }}</div>
+  {% endfor %}
+
+  <h3>{% if result.uncertain %}Best guesses{% else %}Plausible crops{% endif %}</h3>
+  <ul class="chips chips-static">
+    {% for item in result.plausible %}<li class="chip chip-static"><span aria-hidden="true">{{ item.icon }}</span>{{ item.name }}</li>{% endfor %}
+  </ul>
+  <p class="hint">
+    {% if result.uncertain %}No crop is confident enough on its own, so the three best guesses are shown. Treat this recommendation as uncertain.
+    {% elif result.plausible|length == 1 %}The model sees a single plausible crop.
+    {% else %}Several crops are plausible, so treat this recommendation with caution.{% endif %}
+    On held-out data, sets built this way contained the right crop {{ '%.1f'|format(conformal.empirical_coverage * 100) }}% of the time (target {{ '%.0f'|format(result.coverage_target * 100) }}%).
+  </p>
+
+  <h3>Top three</h3>
+  <ul class="rank">
+    {% for item in [result.top] + result.others %}
+    <li class="rank-item{% if loop.first %} rank-top{% endif %}">
+      <span class="rank-name"><span aria-hidden="true">{{ item.icon }}</span> {{ item.name }}</span>
+      <svg class="bar" viewBox="0 0 100 6" preserveAspectRatio="none" aria-hidden="true">
+        <rect class="bar-bg" width="100" height="6" rx="3"/>
+        <rect class="bar-fg" width="{{ item.percent }}" height="6" rx="3"/>
+      </svg>
+      <span class="rank-pct">{{ item.percent }}%</span>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <h3>You vs a typical {{ result.top.name|lower }} field</h3>
+  <figure class="radar-fig">
+    <svg viewBox="0 0 {{ result.radar.width }} {{ result.radar.height }}" role="img" aria-labelledby="radar-title radar-desc">
+      <title id="radar-title">Radar chart of your conditions against typical {{ result.top.name }} conditions</title>
+      <desc id="radar-desc">Each axis is one input scaled to the range seen in the training data.</desc>
+      {% for ring in result.radar.rings %}<polygon class="radar-ring" points="{{ ring }}"/>{% endfor %}
+      {% for axis in result.radar.axes %}<line class="radar-axis" x1="{{ result.radar.cx }}" y1="{{ result.radar.cy }}" x2="{{ axis.x2 }}" y2="{{ axis.y2 }}"/>{% endfor %}
+      <polygon class="radar-typical" points="{{ result.radar.typical }}"/>
+      <polygon class="radar-user" points="{{ result.radar.user }}"/>
+      {% for dot in result.radar.user_dots %}<circle class="radar-dot" cx="{{ dot[0] }}" cy="{{ dot[1] }}" r="3.5"/>{% endfor %}
+      {% for axis in result.radar.axes %}<text class="radar-label" x="{{ axis.lx }}" y="{{ axis.ly }}" text-anchor="{{ axis.anchor }}">{{ axis.label }}</text>{% endfor %}
+    </svg>
+    <figcaption>
+      <span class="legend legend-user">Your conditions</span>
+      <span class="legend legend-typical">Typical for {{ result.top.name }}</span>
+      <span class="hint">Axes are scaled to the training range.</span>
+    </figcaption>
+  </figure>
+
+  <h3>Why this crop?</h3>
+  <p class="hint">Change in the probability of {{ result.top.name }} if one input were set to the dataset's typical value. Positive means your value supports the recommendation.</p>
+  <ul class="effects">
+    {% for row in result.explanation %}
+    <li class="effect effect-{{ row.direction }}">
+      <span class="effect-label">{{ row.label.split(' (')[0] }}</span>
+      <svg class="effect-bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+        <line class="zero" x1="50" x2="50" y1="0" y2="8"/>
+        <rect x="{{ row.bar_x }}" y="1" width="{{ row.bar_w }}" height="6" rx="1"/>
+      </svg>
+      <span class="effect-val">{{ "%+.1f"|format(row.effect * 100) }} pts<span class="visually-hidden"> ({{ row.direction }})</span></span>
+      <span class="effect-meta">You: {{ '%g'|format(row.value) }} · typical {{ '%.1f'|format(row.typical) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+
+  <div class="result-actions">
+    <button type="button" class="btn btn-ghost" id="copy-curl">Copy as cURL</button>
+    <a class="btn btn-ghost" href="{{ url_for('about') }}">How the model was evaluated</a>
+  </div>
+</section>

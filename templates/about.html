@@ -1,0 +1,132 @@
+{% extends "base.html" %}
+{% block title %}The model · Crop Recommender{% endblock %}
+{% block content %}
+<section class="hero">
+  <span class="pill">Evaluation · Transparency</span>
+  <h1>How the model <span class="gradient-text">earns your trust</span></h1>
+  <p class="lede">What was measured, how, and where the model stops being reliable. Every number on this page was produced by <code>train.py</code> on a held-out test set.</p>
+</section>
+
+{% if not model_loaded %}
+<div class="alert alert-error" role="alert">No trained model found. Run <code>python train.py</code> first.</div>
+{% else %}
+
+<ul class="stats stats-6" aria-label="Headline metrics">
+  <li><strong>{{ '%.1f'|format(metrics.test_accuracy * 100) }}%</strong><span>Test accuracy</span></li>
+  <li><strong>{{ '%.3f'|format(metrics.test_macro_f1) }}</strong><span>Macro F1</span></li>
+  <li><strong>{{ '%.1f'|format(metrics.conformal.empirical_coverage * 100) }}%</strong><span>Set coverage</span></li>
+  <li><strong>{{ '%.2f'|format(metrics.conformal.mean_set_size) }}</strong><span>Crops per set</span></li>
+  <li><strong>{{ '%.3f'|format(metrics.calibration.ece) }}</strong><span>Calibration error</span></li>
+  <li><strong>{{ metrics.dataset_rows }}</strong><span>Training rows</span></li>
+</ul>
+
+<div class="stack">
+  <section class="panel">
+    <h2>Model comparison</h2>
+    <p class="hint">{{ metrics.train_rows }} train / {{ metrics.calibration_rows }} calibration / {{ metrics.test_rows }} test rows. The model was chosen by {{ metrics.cv_folds }}-fold cross-validation on the training split only; the test set was used once for reporting.{% if metrics.tuned %} Hyperparameters were tuned inside each fold (nested cross-validation).{% endif %}</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Model</th><th>CV accuracy</th><th>Test accuracy</th><th>Test macro F1</th></tr></thead>
+        <tbody>
+          {% for row in metrics.comparison|sort(attribute='cv_accuracy_mean', reverse=True) %}
+          <tr{% if row.model == metrics.best_model %} class="selected"{% endif %}>
+            <td>{{ row.model }}{% if row.model == metrics.best_model %} <span class="badge level-high">selected</span>{% endif %}</td>
+            <td>{{ '%.3f'|format(row.cv_accuracy_mean) }} ± {{ '%.3f'|format(row.cv_accuracy_std) }}</td>
+            <td>{{ '%.3f'|format(row.test_accuracy) }}</td>
+            <td>{{ '%.3f'|format(row.test_macro_f1) }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="two-col">
+    <section class="panel">
+      <h2>Uncertainty: prediction sets</h2>
+      <p>Instead of one overconfident answer, the app returns a <strong>set of plausible crops</strong>. It uses split conformal prediction, calibrated on {{ metrics.conformal.n_calibration }} rows the model never trained on.</p>
+      <ul class="facts">
+        <li><strong>Target coverage:</strong> {{ '%.0f'|format(metrics.conformal.target_coverage * 100) }}%</li>
+        <li><strong>Measured on the test set:</strong> {{ '%.1f'|format(metrics.conformal.empirical_coverage * 100) }}%</li>
+        <li><strong>Average set size:</strong> {{ '%.2f'|format(metrics.conformal.mean_set_size) }} crops ({{ '%.0f'|format(metrics.conformal.single_crop_fraction * 100) }}% are a single crop)</li>
+        <li><strong>No crop above the bar:</strong> {{ '%.0f'|format((metrics.conformal.fallback_fraction or 0) * 100) }}% of test inputs; for these the three best guesses are shown</li>
+      </ul>
+      <p class="hint">The guarantee is averaged over inputs and assumes new data resemble the calibration data. It can fail under distribution shift.</p>
+    </section>
+
+    <section class="panel">
+      <h2>Unusual-input check</h2>
+      <p>Each input is compared with the pooled training data using the Mahalanobis distance. Combinations beyond the {{ '%.0f'|format(metrics.ood.quantile * 100) }}th percentile of training distances ({{ '%.2f'|format(metrics.ood.threshold) }}) get a warning.</p>
+      <p class="hint">{{ '%.1f'|format(metrics.ood.test_flag_rate * 100) }}% of test rows are flagged. The training data forms one cluster per crop, so this only catches inputs far from the whole cloud.</p>
+    </section>
+  </div>
+
+  {% if metrics.robustness %}
+  <section class="panel">
+    <h2>Robustness</h2>
+    <p class="hint">Test accuracy after adding random noise to the inputs, or replacing some inputs with the training median as if they were missing. Averaged over {{ metrics.robustness.repeats }} repeats.</p>
+    {% if has_robustness %}<img src="{{ url_for('report_file', filename='robustness.png') }}" alt="Accuracy as inputs get noisier or go missing" loading="lazy">{% endif %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Noise (fraction of each input's std)</th>{% for r in metrics.robustness.noise %}<th>{{ '%g'|format(r.level) }}</th>{% endfor %}</tr></thead>
+        <tbody><tr><td>Test accuracy</td>{% for r in metrics.robustness.noise %}<td>{{ '%.3f'|format(r.accuracy) }}</td>{% endfor %}</tr></tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <div class="two-col">
+    {% if metrics.calibration %}
+    <section class="panel">
+      <h2>Calibration</h2>
+      <p>When the model says 80%, is it right about 80% of the time? Expected calibration error (ECE) is the gap; 0 is perfect.</p>
+      <ul class="facts">
+        <li><strong>ECE:</strong> {{ '%.3f'|format(metrics.calibration.ece) }}</li>
+        <li><strong>Log loss:</strong> {{ '%.3f'|format(metrics.calibration.log_loss) }}</li>
+      </ul>
+      {% if has_calibration %}<img src="{{ url_for('report_file', filename='calibration.png') }}" alt="Reliability diagram" loading="lazy">{% endif %}
+    </section>
+    {% endif %}
+    <section class="panel">
+      <h2>What drives predictions</h2>
+      {% if has_importance %}<img src="{{ url_for('report_file', filename='feature_importance.png') }}" alt="Permutation feature importance chart" loading="lazy">{% endif %}
+      <p class="hint">Per-prediction explanations on the Predict page use a simple occlusion method: each input is replaced by the dataset median in turn. It can understate the effect of inputs that are correlated with others.</p>
+    </section>
+  </div>
+
+  {% if has_confusion %}
+  <section class="panel">
+    <h2>Where it makes mistakes</h2>
+    <img src="{{ url_for('report_file', filename='confusion_matrix.png') }}" alt="Confusion matrix on the test set" loading="lazy">
+  </section>
+  {% endif %}
+
+  <div class="two-col">
+    <section class="panel">
+      <h2>Limitations</h2>
+      <ul class="facts">
+        <li>The dataset is small and balanced (the same number of examples per crop) and looks cleaner than real farm data, so scores here will not transfer directly to real fields.</li>
+        <li>The model sees only seven inputs. It does not know the soil type, location, season, irrigation, market prices or pests.</li>
+        <li>Inputs outside the training ranges trigger a warning, because predictions there are unreliable.</li>
+      </ul>
+    </section>
+    <section class="panel">
+      <h2>Reproducibility</h2>
+      <ul class="facts">
+        <li>Python {{ metrics.environment.python }}, scikit-learn {{ metrics.environment.scikit_learn }}, pandas {{ metrics.environment.pandas }}, numpy {{ metrics.environment.numpy }}</li>
+        <li>Random seed {{ metrics.random_seed }}</li>
+        {% if metrics.dataset_sha256 %}<li>Dataset SHA-256: <code class="hash">{{ metrics.dataset_sha256 }}</code></li>{% endif %}
+      </ul>
+    </section>
+  </div>
+
+  <section class="panel">
+    <h2>Use it from code</h2>
+    <p>The same model is available as a JSON API. The full description is at <a href="{{ url_for('openapi_spec') }}">/openapi.json</a>.</p>
+    <pre><code>curl -X POST {{ request.host_url }}api/predict \
+  -H "Content-Type: application/json" \
+  -d '{"N": 90, "P": 42, "K": 43, "temperature": 21, "humidity": 82, "ph": 6.5, "rainfall": 200}'</code></pre>
+  </section>
+</div>
+{% endif %}
+{% endblock %}

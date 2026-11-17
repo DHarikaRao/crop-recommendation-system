@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% block title %}Crop Recommender: find the crop that fits your land{% endblock %}
+{% block content %}
+<section class="hero">
+  <span class="pill">Explainable ML · Uncertainty-aware</span>
+  <h1>Find the crop that <span class="gradient-text">fits your land</span></h1>
+  <p class="lede">Enter your soil nutrients and local climate. The model ranks the most suitable crops, shows how sure it is, and explains which inputs drove the answer.</p>
+  {% if stats %}
+  <ul class="stats" aria-label="Model quality on held-out test data">
+    <li><strong>{{ '%.1f'|format(stats.test_accuracy * 100) }}%</strong><span>Test accuracy</span></li>
+    <li><strong>{{ '%.1f'|format(conformal.empirical_coverage * 100) }}%</strong><span>Set coverage (target {{ '%.0f'|format(conformal.target_coverage * 100) }}%)</span></li>
+    <li><strong>{{ stats.n_classes }}</strong><span>Crops</span></li>
+    <li><strong>{{ '%.3f'|format(stats.calibration.ece) }}</strong><span>Calibration error</span></li>
+  </ul>
+  {% endif %}
+</section>
+
+{% if not model_loaded %}
+<div class="alert alert-error" role="alert">
+  The trained model was not found. Run <code>python train.py</code> to create it, then restart the app.
+</div>
+{% endif %}
+
+<div id="app" class="app-grid">
+  <form method="post" class="panel form-panel" id="predict-form" novalidate>
+    <div class="panel-head">
+      <h2>Your field conditions</h2>
+      <p class="hint">Drag a slider or type a value. The bar under each slider shows the range the model was trained on.</p>
+    </div>
+
+    {% if profile_options %}
+    <div class="presets">
+      <p class="label">Start from a crop's typical conditions</p>
+      <div class="chips" role="group" aria-label="Typical conditions by crop">
+        {% for key, name, icon in profile_options %}
+        <button type="button" class="chip" data-crop="{{ key }}" aria-pressed="{{ 'true' if (key == default_crop and not form) else 'false' }}"><span aria-hidden="true">{{ icon }}</span>{{ name }}</button>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="fields">
+      {% for f in fields %}
+      <div class="field{% if errors.get(f.name) %} has-error{% endif %}">
+        <div class="field-top">
+          <label for="f-{{ f.name }}">{{ f.label.split(' (')[0] }}<span class="unit">{% if f.name in ('N', 'P', 'K') %}{{ f.name }} · {% endif %}{{ f.unit }}</span></label>
+          <input id="f-{{ f.name }}" name="{{ f.name }}" type="number" inputmode="decimal"
+                 step="{{ f.step }}" min="{{ f.min }}" max="{{ f.max }}"
+                 value="{{ form.get(f.name, defaults.get(f.name, '')) }}" required
+                 {% if errors.get(f.name) %}aria-invalid="true" aria-describedby="e-{{ f.name }}"{% endif %}>
+        </div>
+        <input class="range" type="range" min="{{ f.min }}" max="{{ f.max }}" step="{{ f.step }}"
+               aria-label="{{ f.label }} slider" tabindex="-1">
+        {% if f.marker %}
+        <svg class="train-range" viewBox="0 0 100 4" preserveAspectRatio="none" aria-hidden="true">
+          <rect class="tr-bg" width="100" height="4" rx="2"/>
+          <rect class="tr-fg" x="{{ f.marker.x }}" width="{{ f.marker.w }}" height="4" rx="2"/>
+        </svg>
+        <span class="hint">Trained on {{ '%g'|format(f.train_low) }} to {{ '%g'|format(f.train_high) }}</span>
+        {% endif %}
+        {% if errors.get(f.name) %}<span class="error" id="e-{{ f.name }}">{{ errors[f.name] }}</span>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="actions">
+      <button type="submit" class="btn btn-primary" {% if not model_loaded %}disabled{% endif %}>Recommend a crop</button>
+      <button type="button" class="btn btn-ghost" id="clear-btn">Clear</button>
+    </div>
+  </form>
+
+  <div id="result-region" aria-live="polite">
+    {% if result %}
+      {% include "_result.html" %}
+    {% else %}
+    <aside class="panel placeholder">
+      <svg viewBox="0 0 120 100" width="120" height="100" aria-hidden="true">
+        <path d="M60 92V48" class="ph-stem"/>
+        <path d="M60 58C60 40 46 30 28 32c0 18 12 28 32 26z" class="ph-leaf"/>
+        <path d="M60 48c0-16 12-26 30-24 0 16-12 26-30 24z" class="ph-leaf ph-leaf-2"/>
+        <ellipse cx="60" cy="94" rx="30" ry="4" class="ph-soil"/>
+      </svg>
+      <h2>Your recommendation appears here</h2>
+      <ol class="steps">
+        <li><strong>Set conditions</strong> or start from a crop's typical values.</li>
+        <li><strong>Get a ranked answer</strong> with confidence and a set of plausible crops.</li>
+        <li><strong>See why</strong>: which inputs pushed the result, and how you compare with a typical field.</li>
+      </ol>
+    </aside>
+    {% endif %}
+  </div>
+</div>
+
+<section class="features" aria-label="What makes this different">
+  <article class="feature">
+    <h3>Explained</h3>
+    <p>Every answer shows how much each input moved the probability, so you can see why a crop was chosen.</p>
+  </article>
+  <article class="feature">
+    <h3>Honest about uncertainty</h3>
+    <p>Instead of one overconfident answer, you get a set of plausible crops calibrated to a target coverage on held-out data.</p>
+  </article>
+  <article class="feature">
+    <h3>Built like a service</h3>
+    <p>Validated inputs, rate limiting, request IDs, Prometheus metrics and an OpenAPI description sit behind this page.</p>
+  </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+{% if profiles %}<script id="profiles" type="application/json">{{ profiles|tojson }}</script>{% endif %}
+<script src="{{ url_for('static', filename='app.js') }}"></script>
+{% endblock %}

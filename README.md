@@ -4,6 +4,8 @@
 
 A machine-learning web service that recommends the most suitable crops from soil nutrients (N, P, K, pH) and climate conditions (temperature, humidity, rainfall). It goes beyond "train a model and show an accuracy": it measures how far the model can be trusted (robustness, calibration, conformal prediction sets), explains every recommendation, and ships as a tested, observable service with a polished interface.
 
+**Live demo:** https://crop-recommendation-system-bbkw.onrender.com (free hosting; the first load can take about 30 seconds)
+
 > Educational project built on a public dataset. It is not agronomic advice.
 
 ![Home](docs/home.png)

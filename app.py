@@ -178,7 +178,7 @@ def create_app(model_path=None, reports_dir=None, rate_limit=None):
     # ---------------------------------------------------------------- pages
     @app.route("/", methods=["GET", "POST"])
     def index():
-        if request.method == "GET":
+        if request.method in ("GET", "HEAD"):
             return render_template("index.html", **page_context(form={}, errors={}, result=None))
         if artifact is None:
             return render_template("index.html", **page_context(form={}, errors={}, result=None)), 503
